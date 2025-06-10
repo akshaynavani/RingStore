@@ -3,10 +3,12 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <thread>
 #include <vector>
 
+#include "ringstore/buffer_pool.h"
 #include "ringstore/engine_options.h"
 #include "ringstore/io_request.h"
 #include "ringstore/ring.h"
@@ -44,6 +46,36 @@ class IoEngine {
   // Either every request is accepted or an error is returned before any
   // callback could fire for the rejected tail.
   Status SubmitBatch(std::vector<IoRequest> requests);
+
+  // Registers every buffer of `pool` as an io_uring fixed buffer. A request
+  // then sets `buf_index = PooledBuffer::index()` to use READ/WRITE_FIXED.
+  // Must be called while no I/O is in flight; the pool must outlive the engine
+  // (or a matching UnregisterBuffers()).
+  Status RegisterBufferPool(const BufferPool& pool);
+  Status UnregisterBuffers();
+
+  // Registers file descriptors; requests then set `fixed_file = true` and use
+  // the position in `fds` as `fd`. Must be called while no I/O is in flight.
+  Status RegisterFiles(const std::vector<int>& fds);
+  Status UnregisterFiles();
+
+  // Future-based convenience wrappers. The returned future resolves on the
+  // reaper thread; if submission fails it is resolved immediately.
+  std::future<IoResult> ReadAsync(int fd, std::uint8_t* buf, std::uint32_t len,
+                                  std::uint64_t offset, int buf_index = -1);
+  std::future<IoResult> WriteAsync(int fd, const std::uint8_t* buf, std::uint32_t len,
+                                   std::uint64_t offset, int buf_index = -1);
+  std::future<IoResult> FsyncAsync(int fd, bool datasync = false);
+  std::future<IoResult> SubmitAsync(IoRequest request);
+
+  // Blocking helpers built on the futures above.
+  IoResult Read(int fd, std::uint8_t* buf, std::uint32_t len, std::uint64_t offset) {
+    return ReadAsync(fd, buf, len, offset).get();
+  }
+  IoResult Write(int fd, const std::uint8_t* buf, std::uint32_t len, std::uint64_t offset) {
+    return WriteAsync(fd, buf, len, offset).get();
+  }
+  IoResult Fsync(int fd, bool datasync = false) { return FsyncAsync(fd, datasync).get(); }
 
   EngineStats stats() const;
   unsigned max_inflight() const { return max_inflight_; }

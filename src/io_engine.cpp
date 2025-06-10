@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <memory>
 #include <string>
 
 namespace ringstore {
@@ -328,6 +329,69 @@ void IoEngine::Complete(Inflight* inflight, Status status) {
   space_cv_.notify_one();
 
   if (cb) cb(result);
+}
+
+Status IoEngine::RegisterBufferPool(const BufferPool& pool) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!running_.load()) return Status::InvalidArgument("engine not started");
+  if (inflight_ != 0) return Status::InvalidArgument("cannot register buffers with I/O in flight");
+  return ring_.RegisterBuffers(pool.iovecs());
+}
+
+Status IoEngine::UnregisterBuffers() {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (inflight_ != 0) return Status::InvalidArgument("cannot unregister buffers with I/O in flight");
+  return ring_.UnregisterBuffers();
+}
+
+Status IoEngine::RegisterFiles(const std::vector<int>& fds) {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!running_.load()) return Status::InvalidArgument("engine not started");
+  if (inflight_ != 0) return Status::InvalidArgument("cannot register files with I/O in flight");
+  return ring_.RegisterFiles(fds);
+}
+
+Status IoEngine::UnregisterFiles() {
+  std::lock_guard<std::mutex> lock(mu_);
+  if (inflight_ != 0) return Status::InvalidArgument("cannot unregister files with I/O in flight");
+  return ring_.UnregisterFiles();
+}
+
+std::future<IoResult> IoEngine::SubmitAsync(IoRequest request) {
+  auto promise = std::make_shared<std::promise<IoResult>>();
+  std::future<IoResult> future = promise->get_future();
+  IoCallback user_cb = std::move(request.callback);
+  request.callback = [promise, user_cb = std::move(user_cb)](const IoResult& r) {
+    if (user_cb) user_cb(r);
+    promise->set_value(r);
+  };
+  Status s = Submit(std::move(request));
+  if (!s.ok()) {
+    IoResult failed;
+    failed.status = s;
+    promise->set_value(failed);
+  }
+  return future;
+}
+
+std::future<IoResult> IoEngine::ReadAsync(int fd, std::uint8_t* buf, std::uint32_t len,
+                                          std::uint64_t offset, int buf_index) {
+  IoRequest r = IoRequest::Read(fd, buf, len, offset);
+  r.buf_index = buf_index;
+  return SubmitAsync(std::move(r));
+}
+
+std::future<IoResult> IoEngine::WriteAsync(int fd, const std::uint8_t* buf, std::uint32_t len,
+                                           std::uint64_t offset, int buf_index) {
+  // io_uring never writes into the source buffer; the cast only satisfies the
+  // shared IoRequest layout.
+  IoRequest r = IoRequest::Write(fd, const_cast<std::uint8_t*>(buf), len, offset);
+  r.buf_index = buf_index;
+  return SubmitAsync(std::move(r));
+}
+
+std::future<IoResult> IoEngine::FsyncAsync(int fd, bool datasync) {
+  return SubmitAsync(IoRequest::Fsync(fd, datasync));
 }
 
 EngineStats IoEngine::stats() const {
