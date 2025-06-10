@@ -47,3 +47,7 @@ if(RINGSTORE_SANITIZE)
   target_compile_options(ringstore PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
   target_link_options(ringstore PUBLIC -fsanitize=address,undefined)
 endif()
+
+add_executable(ringstore_example examples/basic_io.cpp)
+target_link_libraries(ringstore_example PRIVATE ringstore)
+target_compile_options(ringstore_example PRIVATE ${RINGSTORE_WARNINGS})
