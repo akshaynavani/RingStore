@@ -34,6 +34,7 @@ add_library(ringstore STATIC
   src/buffer_pool.cpp
   src/ring.cpp
   src/file.cpp
+  src/io_engine.cpp
 )
 
 target_include_directories(ringstore PUBLIC
