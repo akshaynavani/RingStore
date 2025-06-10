@@ -36,6 +36,7 @@ add_library(ringstore STATIC
   src/file.cpp
   src/io_engine.cpp
   src/crc32c.cpp
+  src/layout.cpp
 )
 
 target_include_directories(ringstore PUBLIC
