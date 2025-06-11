@@ -54,3 +54,7 @@ endif()
 add_executable(ringstore_example examples/basic_io.cpp)
 target_link_libraries(ringstore_example PRIVATE ringstore)
 target_compile_options(ringstore_example PRIVATE ${RINGSTORE_WARNINGS})
+
+add_executable(ringstore_cli tools/ringstore_cli.cpp)
+target_link_libraries(ringstore_cli PRIVATE ringstore)
+target_compile_options(ringstore_cli PRIVATE ${RINGSTORE_WARNINGS})
