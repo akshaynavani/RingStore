@@ -65,3 +65,8 @@ if(RINGSTORE_BUILD_BENCH)
   target_link_libraries(ringstore_bench PRIVATE ringstore)
   target_compile_options(ringstore_bench PRIVATE ${RINGSTORE_WARNINGS})
 endif()
+
+if(RINGSTORE_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
