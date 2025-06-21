@@ -1,0 +1,43 @@
+# CMake build trees
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+_deps/
+compile_commands.json
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.out
+ringstore_bench
+ringstore_cli
+ringstore_example
+ringstore_tests
+
+# Benchmark output and scratch data
+results/
+*.dat
+*.csv
+*.png
+
+# Editors / OS
+.vscode/
+.idea/
+.cache/
+*.swp
+.DS_Store
+
+# Python
+__pycache__/
+.venv/
+
+# Local environment
+.env
