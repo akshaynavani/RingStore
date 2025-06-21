@@ -182,7 +182,10 @@ Status IoEngine::Submit(IoRequest request) {
   if (inflight_ > high_water_.load(std::memory_order_relaxed)) {
     high_water_.store(inflight_, std::memory_order_relaxed);
   }
-  FlushLocked();
+  // Requests chained from a completion callback are left queued: the reaper
+  // flushes once per drained CQ batch, so a closed loop at queue depth N costs
+  // one io_uring_enter per batch instead of one per request.
+  if (!OnReaperThread()) FlushLocked();
   return Status::Ok();
 }
 
@@ -221,7 +224,7 @@ Status IoEngine::SubmitBatch(std::vector<IoRequest> requests) {
   if (inflight_ > high_water_.load(std::memory_order_relaxed)) {
     high_water_.store(inflight_, std::memory_order_relaxed);
   }
-  FlushLocked();
+  if (!on_reaper) FlushLocked();
   return Status::Ok();
 }
 
@@ -249,7 +252,8 @@ void IoEngine::ReaperLoop() {
     }
     ring_.CqAdvance(n);
 
-    // Retry any flush that failed earlier with -EBUSY while the CQ was full.
+    // Submit everything queued while handling this batch (chained requests
+    // and resubmissions), plus any flush that failed earlier with -EBUSY.
     std::lock_guard<std::mutex> lock(mu_);
     if (unsubmitted_ > 0) FlushLocked();
   }
@@ -297,7 +301,7 @@ void IoEngine::Resubmit(Inflight* inflight) {
   io_uring_sqe* sqe = AcquireSqeLocked();
   PrepareSqe(sqe, inflight);
   ++unsubmitted_;
-  FlushLocked();
+  // Runs on the reaper thread; flushed with the rest of the batch.
 }
 
 void IoEngine::Complete(Inflight* inflight, Status status) {
